@@ -1,0 +1,71 @@
+{
+  "name": "@creator-hub/image-core",
+  "version": "0.1.0",
+  "description": "Image code shared by the Creator Hub tools: limits, decode and encode, file names, a ZIP writer, downloads, and Cloudflare Pages build helpers.",
+  "license": "MIT",
+  "author": "Ashutosh Narayan Singh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saakumar2016/creator-hub-image-core.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./limits": {
+      "types": "./dist/limits.d.ts",
+      "import": "./dist/limits.js"
+    },
+    "./names": {
+      "types": "./dist/names.d.ts",
+      "import": "./dist/names.js"
+    },
+    "./codec": {
+      "types": "./dist/codec.d.ts",
+      "import": "./dist/codec.js"
+    },
+    "./zip": {
+      "types": "./dist/zip.d.ts",
+      "import": "./dist/zip.js"
+    },
+    "./downloads": {
+      "types": "./dist/downloads.d.ts",
+      "import": "./dist/downloads.js"
+    },
+    "./pages": {
+      "types": "./dist/pages/index.d.ts",
+      "import": "./dist/pages/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "image-core-pages-postbuild": "./dist/pages/cli.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.13.3",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
+    "jsdom": "^30.1.2",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^5.0.3"
+  }
+}
