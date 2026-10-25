@@ -15,7 +15,7 @@ The tools install it at build time from a version tag (not from npm, not shared 
 Federation; each tool's bundler bundles what it imports):
 
 ```bash
-npm install git+https://github.com/saakumar2016/creator-hub-image-core.git#v0.1.0
+npm install git+https://github.com/saakumar2016/creator-hub-image-core.git#v0.2.1
 ```
 
 Use the `git+https://` form (not `github:`): npm then records an `https` URL in the lockfile, so
@@ -41,9 +41,9 @@ npm clones the tag, installs the package's dependencies and devDependencies, run
 
 One JPEG per page, drawn on the whole page, embedded **unchanged** (no decoding, no re-encoding).
 Plain PDF 1.4 with a classic cross-reference table; no metadata, dates or producer string.
-Supported JPEGs: baseline or extended sequential Huffman, 8 bits, 1 component (gray) or 3
-components (colour). Progressive, arithmetic, lossless, 12-bit and 4-component (CMYK) files throw a
-`PdfError` that says so. A page is at most 14,400 pt (200 in) per side.
+Supported JPEGs: baseline (SOF0) Huffman, 8 bits, 1 component (gray) or 3 components (colour).
+Extended sequential, progressive, arithmetic, lossless, 12-bit and 4-component (CMYK) files, and
+files with a damaged frame header, throw a `PdfError` that says so. A page is at most 14,400 pt (200 in) per side.
 
 ```ts
 import { mmToPt, parseJpegSize, writePdf } from '@creator-hub/image-core/pdf'
@@ -78,6 +78,7 @@ npm run typecheck
 npm run build
 ```
 
-Versions are released as tags (`v0.1.0`, …); tools update the tag in their `package.json`.
+Versions are released as tags (`v0.1.0`, `v0.2.1`, …); tools update the tag in their `package.json`.
+`v0.2.0` points at the same commit as `v0.1.0` and has no PDF writer: use `v0.2.1` or later.
 
 Used by Creator Hub tools. MIT license.
