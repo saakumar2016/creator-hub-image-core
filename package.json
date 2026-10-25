@@ -1,6 +1,6 @@
 {
   "name": "@creator-hub/image-core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Image code shared by the Creator Hub tools: limits, decode and encode, file names, a ZIP writer, a PDF writer, downloads, and Cloudflare Pages build helpers.",
   "license": "MIT",
   "author": "Ashutosh Narayan Singh",

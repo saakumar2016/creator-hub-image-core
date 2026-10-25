@@ -32,7 +32,7 @@ npm clones the tag, installs the package's dependencies and devDependencies, run
 | `@creator-hub/image-core/names` | `outputFileName` (`name-WxH.ext`), `splitFileName` (`name-k.ext`), `typedPrefix`, `sanitizePrefix`, `defaultPrefix`, `outputName` (`prefix-k.ext`), `zipName` |
 | `@creator-hub/image-core/codec` | `decodeImage` (EXIF orientation applied), `encodeCanvas` (JPG/WebP quality, falls back → `UnsupportedOutputError`), `canEncode`, `fillWhite` (JPG has no transparency), `createCanvas`, `ImageDecodeError`, `EncodeError` |
 | `@creator-hub/image-core/zip` | `zipStore` (stored entries, CRC-32, UTF-8 names), `crc32`, `zipSize`, `MAX_ZIP_BYTES`, `ZipTooLargeError` |
-| `@creator-hub/image-core/pdf` (new in v0.2.0) | `writePdf` (Blob), `pdfStore` (parts), `parseJpegSize`, `mmToPt`, `pxToPt`, `estimatePdfOverhead`, `PdfError`, `MAX_PAGE_PT`, `PDF_MIME` |
+| `@creator-hub/image-core/pdf` (new in v0.2.1) | `writePdf` (Blob), `pdfStore` (parts), `parseJpegSize`, `mmToPt`, `pxToPt`, `estimatePdfOverhead`, `PdfError`, `MAX_PAGE_PT`, `PDF_MIME` |
 | `@creator-hub/image-core/downloads` | `saveBlob`, `saveEach` (one after another, 300 ms apart), `canShareFiles` (`navigator.canShare({ files })`), `shareFiles` (user cancel → `'cancelled'`) |
 | `@creator-hub/image-core/pages` (Node) | `checkAllowedOrigin`, `renderHeaders`, `devPageFiles`, `runPostbuild` |
 | `@creator-hub/image-core` | everything above except `pages` |
