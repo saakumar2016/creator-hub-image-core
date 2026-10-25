@@ -2,7 +2,7 @@
 
 Image code shared by the [Creator Hub](https://github.com/saakumar2016) tools (Image Cropper,
 Image Resizer, and the coming Image Compressor): limits and validation, decode and encode in the
-browser, file names, a small ZIP writer, downloads and sharing, and the Cloudflare Pages build
+browser, file names, a small ZIP writer, a small PDF writer, downloads and sharing, and the Cloudflare Pages build
 helpers of the tool remotes.
 
 - Plain TypeScript and browser APIs only: no React, no UI, no translated strings, no tool logic.
@@ -32,9 +32,31 @@ npm clones the tag, installs the package's dependencies and devDependencies, run
 | `@creator-hub/image-core/names` | `outputFileName` (`name-WxH.ext`), `splitFileName` (`name-k.ext`), `typedPrefix`, `sanitizePrefix`, `defaultPrefix`, `outputName` (`prefix-k.ext`), `zipName` |
 | `@creator-hub/image-core/codec` | `decodeImage` (EXIF orientation applied), `encodeCanvas` (JPG/WebP quality, falls back → `UnsupportedOutputError`), `canEncode`, `fillWhite` (JPG has no transparency), `createCanvas`, `ImageDecodeError`, `EncodeError` |
 | `@creator-hub/image-core/zip` | `zipStore` (stored entries, CRC-32, UTF-8 names), `crc32`, `zipSize`, `MAX_ZIP_BYTES`, `ZipTooLargeError` |
+| `@creator-hub/image-core/pdf` (new in v0.2.0) | `writePdf` (Blob), `pdfStore` (parts), `parseJpegSize`, `mmToPt`, `pxToPt`, `estimatePdfOverhead`, `PdfError`, `MAX_PAGE_PT`, `PDF_MIME` |
 | `@creator-hub/image-core/downloads` | `saveBlob`, `saveEach` (one after another, 300 ms apart), `canShareFiles` (`navigator.canShare({ files })`), `shareFiles` (user cancel → `'cancelled'`) |
 | `@creator-hub/image-core/pages` (Node) | `checkAllowedOrigin`, `renderHeaders`, `devPageFiles`, `runPostbuild` |
 | `@creator-hub/image-core` | everything above except `pages` |
+
+### PDF writer
+
+One JPEG per page, drawn on the whole page, embedded **unchanged** (no decoding, no re-encoding).
+Plain PDF 1.4 with a classic cross-reference table; no metadata, dates or producer string.
+Supported JPEGs: baseline or extended sequential Huffman, 8 bits, 1 component (gray) or 3
+components (colour). Progressive, arithmetic, lossless, 12-bit and 4-component (CMYK) files throw a
+`PdfError` that says so. A page is at most 14,400 pt (200 in) per side.
+
+```ts
+import { mmToPt, parseJpegSize, writePdf } from '@creator-hub/image-core/pdf'
+
+const jpeg = new Uint8Array(await sheetBlob.arrayBuffer()) // a JPEG file
+const { width, height } = parseJpegSize(jpeg)
+const pdf = writePdf([
+  { jpeg, widthPx: width, heightPx: height, pageWidthPt: mmToPt(101.6), pageHeightPt: mmToPt(152.4) },
+]) // Blob, type "application/pdf"
+```
+
+`widthPx` / `heightPx` must match the JPEG (checked). The PDF adds about 700 bytes per page to the
+JPEG data; `estimatePdfOverhead(pageCount)` returns an upper bound for a size limit.
 
 CLI for a tool's `build:pages` (after `vite build`, in the tool's folder):
 
@@ -50,7 +72,7 @@ otherwise), and removes the standalone dev page and the chunks only it uses.
 
 ```bash
 npm ci            # also builds (prepare)
-npm test          # Vitest (jsdom); includes a check of the ZIP output with Python zipfile and unzip -t
+npm test          # Vitest (jsdom); includes checks of the ZIP output (Python zipfile, unzip -t) and of the PDF output (pdfinfo, pdfimages, Ghostscript, qpdf, mutool: each one that is installed)
 npm run lint
 npm run typecheck
 npm run build
