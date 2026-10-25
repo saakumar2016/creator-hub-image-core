@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { MAX_PAGE_PT, PDF_MIME, PdfError, estimatePdfOverhead, mmToPt, parseJpegSize, pdfStore, pxToPt, writePdf, type PdfPage } from './pdf.ts'
 
 // ---- fixtures: JPEG files with a real segment structure (what the parser and the writer look at) ----
-type Fixture = { sof?: number; width?: number; height?: number; components?: number; precision?: number; extra?: number[] }
-function jpeg({ sof = 0xc0, width = 8, height = 8, components = 3, precision = 8, extra = [] }: Fixture = {}): Uint8Array {
+type Fixture = { sof?: number; width?: number; height?: number; components?: number; precision?: number; extra?: number[]; /** the length field of the SOF segment, when it should not match its content */ sofLength?: number; /** components listed in the SOF (default: `components`) */ listed?: number }
+function jpeg({ sof = 0xc0, width = 8, height = 8, components = 3, precision = 8, extra = [], sofLength, listed = components }: Fixture = {}): Uint8Array {
   const frame = [precision, height >> 8, height & 255, width >> 8, width & 255, components]
-  for (let c = 0; c < components; c++) frame.push(c + 1, 0x11, 0)
-  const sofSegment = [0xff, sof, 0, frame.length + 2, ...frame]
+  for (let c = 0; c < listed; c++) frame.push(c + 1, 0x11, 0)
+  const sofSegment = [0xff, sof, 0, sofLength ?? frame.length + 2, ...frame]
   const app0 = [0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x01, 0x2c, 0x01, 0x2c, 0x00, 0x00]
   const scan = [0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00, 0x12, 0x34, 0xff, 0x00, 0x56, 0xff, 0xd9] // contains a stuffed FF 00
   return Uint8Array.from([0xff, 0xd8, ...app0, ...extra, ...sofSegment, ...scan])
@@ -55,10 +55,45 @@ describe('estimates and units', () => {
 })
 
 describe('parseJpegSize', () => {
-  it('reads width, height and components of a baseline JPEG (and an extended sequential one, and gray)', () => {
+  it('reads width, height and components of a baseline (SOF0) JPEG, colour and gray', () => {
     expect(parseJpegSize(jpeg({ width: 413, height: 531 }))).toEqual({ width: 413, height: 531, components: 3 })
-    expect(parseJpegSize(jpeg({ sof: 0xc1, width: 2480, height: 3508 }))).toEqual({ width: 2480, height: 3508, components: 3 })
+    expect(parseJpegSize(jpeg({ width: 2480, height: 3508 }))).toEqual({ width: 2480, height: 3508, components: 3 })
     expect(parseJpegSize(jpeg({ components: 1, width: 70, height: 20 }))).toEqual({ width: 70, height: 20, components: 1 })
+    expect(parseJpegSize(jpeg({ width: 65535, height: 65535 }))).toEqual({ width: 65535, height: 65535, components: 3 })
+  })
+  it('refuses an extended sequential (SOF1) JPEG with a clear error', () => {
+    expect(() => parseJpegSize(jpeg({ sof: 0xc1 }))).toThrow(PdfError)
+    expect(() => parseJpegSize(jpeg({ sof: 0xc1 }))).toThrow(/extended sequential.*only baseline JPEGs are supported/)
+    expect(() => pdfStore([page({}, { sof: 0xc1 })])).toThrow(/extended sequential/)
+  })
+  describe('a damaged or cut-off frame header never gives a size', () => {
+    it('the segment is shorter than a frame header needs (length 2…7)', () => {
+      for (const sofLength of [2, 3, 4, 5, 6, 7]) expect(() => parseJpegSize(jpeg({ sofLength })), `length ${sofLength}`).toThrow(PdfError)
+      expect(() => parseJpegSize(jpeg({ sofLength: 7 }))).toThrow(/too short/)
+    })
+    it('the length does not equal 8 + 3 × components (too short or too long)', () => {
+      expect(() => parseJpegSize(jpeg({ sofLength: 10 }))).toThrow(/wrong length/) // 3 components need 17
+      expect(() => parseJpegSize(jpeg({ sofLength: 18 }))).toThrow(/wrong length/)
+      expect(() => parseJpegSize(jpeg({ components: 1, sofLength: 17 }))).toThrow(/wrong length/) // gray needs 11
+      expect(() => parseJpegSize(jpeg({ components: 3, listed: 1 }))).toThrow(/wrong length|Damaged/) // says 3 components, lists 1
+      expect(() => parseJpegSize(jpeg({ components: 1, listed: 3 }))).toThrow(/wrong length|Damaged/)
+    })
+    it('the length field is larger than the bytes that are left', () => {
+      expect(() => parseJpegSize(jpeg({ sofLength: 0x2000 }))).toThrow(/cut off/)
+      const whole = jpeg()
+      const at = whole.findIndex((_, i) => whole[i] === 0xff && whole[i + 1] === 0xc0)
+      expect(() => parseJpegSize(whole.subarray(0, at + 2 + 17 - 1))).toThrow(/cut off/) // one byte of the segment missing
+      expect(() => parseJpegSize(whole.subarray(0, at + 6))).toThrow(PdfError)
+    })
+    it('zero width or zero height', () => {
+      expect(() => parseJpegSize(jpeg({ width: 0 }))).toThrow(/size is 0/)
+      expect(() => parseJpegSize(jpeg({ height: 0 }))).toThrow(/size is 0/)
+    })
+    it('a wrong component count: 0, 2, 4', () => {
+      for (const components of [0, 2, 4]) expect(() => parseJpegSize(jpeg({ components })), `${components} components`).toThrow(PdfError)
+      expect(() => parseJpegSize(jpeg({ components: 2 }))).toThrow(/2 components/)
+      expect(() => parseJpegSize(jpeg({ components: 4 }))).toThrow(/CMYK/)
+    })
   })
   it('skips other segments before the frame header (Exif, ICC, comments)', () => {
     const exif = [0xff, 0xe1, 0x00, 0x08, 0x45, 0x78, 0x69, 0x66, 0x00, 0x00]
@@ -67,13 +102,12 @@ describe('parseJpegSize', () => {
   it('errors that say what is wrong: not a JPEG, progressive, arithmetic, CMYK, 12-bit, cut off', () => {
     expect(() => parseJpegSize(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]))).toThrow(/Not a JPEG/)
     expect(() => parseJpegSize(new Uint8Array(0))).toThrow(PdfError)
-    expect(() => parseJpegSize(jpeg({ sof: 0xc2 }))).toThrow(/progressive.*only baseline and extended sequential/)
+    expect(() => parseJpegSize(jpeg({ sof: 0xc2 }))).toThrow(/progressive.*only baseline JPEGs are supported/)
     expect(() => parseJpegSize(jpeg({ sof: 0xc9 }))).toThrow(/arithmetic-coded/)
     expect(() => parseJpegSize(jpeg({ sof: 0xc3 }))).toThrow(/lossless/)
     expect(() => parseJpegSize(jpeg({ components: 4 }))).toThrow(/4 components.*not CMYK/)
     expect(() => parseJpegSize(jpeg({ components: 2 }))).toThrow(/2 components/)
     expect(() => parseJpegSize(jpeg({ precision: 12 }))).toThrow(/12-bit/)
-    expect(() => parseJpegSize(jpeg({ width: 0 }))).toThrow(/size is 0/)
     expect(() => parseJpegSize(jpeg().subarray(0, 30))).toThrow(/Damaged/)
     expect(() => parseJpegSize(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]))).toThrow(/no frame header/)
   })

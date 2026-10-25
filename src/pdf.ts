@@ -4,9 +4,9 @@
 // stream, then the page tree, the catalog, a classic cross-reference table with exact byte offsets,
 // the trailer and %%EOF. No document information, no metadata, no dates, no producer string.
 //
-// Supported JPEG input: baseline or extended sequential DCT (SOF0 / SOF1), Huffman coding, 8 bits
-// per sample, 1 component (DeviceGray) or 3 components (DeviceRGB). Not supported, with an error:
-// progressive (SOF2), arithmetic coding, lossless, 12-bit, and 4-component (CMYK / YCCK) files.
+// Supported JPEG input: baseline DCT (SOF0), Huffman coding, 8 bits per sample, 1 component
+// (DeviceGray) or 3 components (DeviceRGB). Not supported, with an error: extended sequential
+// (SOF1), progressive (SOF2), arithmetic coding, lossless, 12-bit, and 4-component (CMYK / YCCK) files.
 
 export class PdfError extends Error {}
 
@@ -33,9 +33,9 @@ export const mmToPt = (mm: number): number => Math.round((mm / 25.4) * 72 * 1000
 /** Pixels at `dpi` to points; `dpi` defaults to 96 (a CSS pixel). */
 export const pxToPt = (px: number, dpi = 96): number => Math.round((px / dpi) * 72 * 1000) / 1000
 
-// SOF markers: 0xC0 baseline, 0xC1 extended sequential (both supported); the others are named for the error.
-const SUPPORTED_SOF = new Set([0xc0, 0xc1])
-const SOF_NAMES: Record<number, string> = { 0xc2: 'progressive', 0xc3: 'lossless', 0xc5: 'differential', 0xc6: 'differential progressive', 0xc7: 'differential lossless', 0xc9: 'arithmetic-coded', 0xca: 'arithmetic-coded progressive', 0xcb: 'arithmetic-coded lossless', 0xcd: 'differential arithmetic-coded', 0xce: 'differential arithmetic-coded progressive', 0xcf: 'differential arithmetic-coded lossless' }
+// SOF markers: only 0xC0 (baseline) is supported; the others are named for the error.
+const BASELINE = 0xc0
+const SOF_NAMES: Record<number, string> = { 0xc1: 'extended sequential', 0xc2: 'progressive', 0xc3: 'lossless', 0xc5: 'differential', 0xc6: 'differential progressive', 0xc7: 'differential lossless', 0xc9: 'arithmetic-coded', 0xca: 'arithmetic-coded progressive', 0xcb: 'arithmetic-coded lossless', 0xcd: 'differential arithmetic-coded', 0xce: 'differential arithmetic-coded progressive', 0xcf: 'differential arithmetic-coded lossless' }
 
 /**
  * Reads the size and the number of components from the start-of-frame segment of a JPEG file.
@@ -59,12 +59,14 @@ export function parseJpegSize(bytes: Uint8Array): JpegInfo {
     const length = (bytes[at + 2] << 8) | bytes[at + 3]
     if (length < 2 || at + 2 + length > bytes.length) throw new PdfError('Damaged JPEG file (a segment is cut off)')
     if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-      if (!SUPPORTED_SOF.has(marker)) throw new PdfError(`Unsupported JPEG: ${SOF_NAMES[marker] ?? 'unknown coding'}; only baseline and extended sequential Huffman JPEGs are supported`)
+      if (marker !== BASELINE) throw new PdfError(`Unsupported JPEG: ${SOF_NAMES[marker] ?? 'unknown coding'}; only baseline JPEGs are supported`)
+      // The frame header is 8 bytes plus 3 per component, and all of it must be in the file.
       if (length < 8) throw new PdfError('Damaged JPEG file (the frame header is too short)')
+      const components = bytes[at + 9]
+      if (length !== 8 + 3 * components) throw new PdfError('Damaged JPEG file (the frame header has the wrong length)')
       const precision = bytes[at + 4]
       const height = (bytes[at + 5] << 8) | bytes[at + 6]
       const width = (bytes[at + 7] << 8) | bytes[at + 8]
-      const components = bytes[at + 9]
       if (precision !== 8) throw new PdfError(`Unsupported JPEG: ${precision}-bit samples; only 8-bit JPEGs are supported`)
       if (width === 0 || height === 0) throw new PdfError('Unsupported JPEG: the size is 0 (a height set after the scan is not supported)')
       if (components !== 1 && components !== 3) throw new PdfError(`Unsupported JPEG: ${components} components; only grayscale (1) and colour (3) JPEGs are supported, not CMYK`)
