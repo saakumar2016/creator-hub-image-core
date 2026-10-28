@@ -15,7 +15,7 @@ The tools install it at build time from a version tag (not from npm, not shared 
 Federation; each tool's bundler bundles what it imports):
 
 ```bash
-npm install git+https://github.com/saakumar2016/creator-hub-image-core.git#v0.2.1
+npm install git+https://github.com/saakumar2016/creator-hub-image-core.git#v0.3.0
 ```
 
 Use the `git+https://` form (not `github:`): npm then records an `https` URL in the lockfile, so
@@ -34,7 +34,7 @@ npm clones the tag, installs the package's dependencies and devDependencies, run
 | `@creator-hub/image-core/zip` | `zipStore` (stored entries, CRC-32, UTF-8 names), `crc32`, `zipSize`, `MAX_ZIP_BYTES`, `ZipTooLargeError` |
 | `@creator-hub/image-core/pdf` (new in v0.2.1) | `writePdf` (Blob), `pdfStore` (parts), `parseJpegSize`, `mmToPt`, `pxToPt`, `estimatePdfOverhead`, `PdfError`, `MAX_PAGE_PT`, `PDF_MIME` |
 | `@creator-hub/image-core/downloads` | `saveBlob`, `saveEach` (one after another, 300 ms apart), `canShareFiles` (`navigator.canShare({ files })`), `shareFiles` (user cancel → `'cancelled'`) |
-| `@creator-hub/image-core/png` (optional, a separate entry; see "PNG compress") | `compressPng`, `PNG_MAX_PIXELS`, `PngTooLargeError`, `PngCompressError`, types |
+| `@creator-hub/image-core/png` (new in v0.3.0; optional, a separate entry; see "PNG compress") | `compressPng`, `PNG_MAX_PIXELS`, `PngTooLargeError`, `PngCompressError`, types |
 | `@creator-hub/image-core/pages` (Node) | `checkAllowedOrigin`, `renderHeaders`, `devPageFiles`, `runPostbuild` |
 | `@creator-hub/image-core` | everything above except `pages` and `png` (the main entry never imports upng-js, pako or oxipng) |
 
@@ -110,6 +110,8 @@ optimizeDeps: {
 
 **Module Federation remotes.** The worker is bundled into the remote's chunk and starts from a `blob:` URL of the page (a `new Worker(<other origin>)` is refused by the browser). The oxipng wasm (164 kB, 77 kB gzip) is a separate file under `assets/`; the worker fetches it from an absolute URL made from the remote's own URL, so the host's page origin needs the remote's usual CORS header (the generated `_headers` already puts it on `/assets/*`) and the file must be served as `application/wasm` (Cloudflare Pages does). Checked in Chrome with a host and a remote on two origins; with a missing or wrong `Access-Control-Allow-Origin` the remote fails to load, with another MIME type `compressPng` rejects with `PngCompressError`.
 
+`upng-js` is pinned to an exact version (2.1.0, no `^` or `~`): the alpha handling calls `UPNG.quantize`, which its README does not document, so an update must be a deliberate step with the tests re-run (`pako` and `@jsquash/oxipng` are pinned too).
+
 Third-party code in this entry (upng-js, pako, @jsquash/oxipng, oxipng): `THIRD_PARTY_NOTICES.md`.
 
 ## Development
@@ -122,7 +124,7 @@ npm run typecheck
 npm run build
 ```
 
-Versions are released as tags (`v0.1.0`, `v0.2.1`, …); tools update the tag in their `package.json`.
+Versions are released as tags (`v0.1.0`, `v0.2.1`, `v0.3.0`, …); tools update the tag in their `package.json`.
 `v0.2.0` points at the same commit as `v0.1.0` and has no PDF writer: use `v0.2.1` or later.
 
 Used by Creator Hub tools. MIT license.
