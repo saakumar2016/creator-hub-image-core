@@ -39,4 +39,4 @@ jobs:
       - run: npm run build
 
       - name: Check the published files
-        run: test -f dist/index.js && test -f dist/index.d.ts && test -f dist/pages/cli.js
+        run: test -f dist/index.js && test -f dist/index.d.ts && test -f dist/pages/cli.js && test -f dist/png/index.js && test -f dist/png/index.d.ts && test -f dist/png/worker.js && ! grep -q './png/' dist/index.js
