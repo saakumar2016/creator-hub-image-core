@@ -1,7 +1,7 @@
 {
   "name": "@creator-hub/image-core",
   "version": "0.2.1",
-  "description": "Image code shared by the Creator Hub tools: limits, decode and encode, file names, a ZIP writer, a PDF writer, downloads, and Cloudflare Pages build helpers.",
+  "description": "Image code shared by the Creator Hub tools: limits, decode and encode, file names, a ZIP writer, a PDF writer, PNG compression (optional entry point), downloads, and Cloudflare Pages build helpers.",
   "license": "MIT",
   "author": "Ashutosh Narayan Singh",
   "repository": {
@@ -9,7 +9,11 @@
     "url": "git+https://github.com/saakumar2016/creator-hub-image-core.git"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/png/globals.js",
+    "./dist/png/engine.js",
+    "./dist/png/worker.js"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -35,6 +39,10 @@
       "types": "./dist/pdf.d.ts",
       "import": "./dist/pdf.js"
     },
+    "./png": {
+      "types": "./dist/png/index.d.ts",
+      "import": "./dist/png/index.js"
+    },
     "./downloads": {
       "types": "./dist/downloads.d.ts",
       "import": "./dist/downloads.js"
@@ -50,7 +58,8 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*"
+    "!dist/**/*.test.*",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "engines": {
     "node": ">=22.12"
@@ -71,5 +80,10 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.69.0",
     "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "@jsquash/oxipng": "2.3.0",
+    "pako": "1.0.11",
+    "upng-js": "2.1.0"
   }
 }
