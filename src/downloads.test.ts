@@ -1,10 +1,41 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { canShareFiles, EACH_GAP_MS, saveBlob, saveEach, shareFiles } from './downloads.ts'
+import { announceDownload, canShareFiles, DOWNLOAD_EVENT, EACH_GAP_MS, saveBlob, saveEach, shareFiles } from './downloads.ts'
 
 const files = [new File(['a'], 'a-1.jpg', { type: 'image/jpeg' }), new File(['b'], 'a-2.jpg', { type: 'image/jpeg' })]
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
+
+/** Counts `imginsta:download` events on window until the returned stop() is called. */
+function listen() {
+  const events: Event[] = []
+  const on = (e: Event) => events.push(e)
+  window.addEventListener('imginsta:download', on)
+  return { events, stop: () => window.removeEventListener('imginsta:download', on) }
+}
+function stubSave() {
+  vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x/1'), revokeObjectURL: vi.fn() }))
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+}
+
+describe('announceDownload', () => {
+  it('the event is called imginsta:download', () => {
+    expect(DOWNLOAD_EVENT).toBe('imginsta:download')
+  })
+  it('sends one CustomEvent on window, with no detail', () => {
+    const l = listen()
+    announceDownload()
+    l.stop()
+    expect(l.events).toHaveLength(1)
+    expect(l.events[0]).toBeInstanceOf(CustomEvent)
+    expect((l.events[0] as CustomEvent).detail).toBeNull()
+  })
+  it('does nothing and does not crash without a window (SSR, Node)', () => {
+    vi.stubGlobal('window', undefined)
+    expect(() => announceDownload()).not.toThrow()
+  })
 })
 
 describe('saveBlob', () => {
@@ -21,6 +52,15 @@ describe('saveBlob', () => {
     expect(URL.revokeObjectURL).not.toHaveBeenCalled()
     vi.advanceTimersByTime(2000)
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:x/1')
+  })
+  it('announces the download: one event per click', () => {
+    stubSave()
+    const l = listen()
+    saveBlob(new Blob(['x']), 'a.jpg')
+    expect(l.events).toHaveLength(1)
+    saveBlob(new Blob(['y']), 'b.jpg')
+    l.stop()
+    expect(l.events).toHaveLength(2)
   })
 })
 
@@ -41,6 +81,16 @@ describe('saveEach ("Download all separately")', () => {
     expect(saved.mock.calls.map((c) => c[0])).toEqual([0, 1, 2])
     vi.advanceTimersByTime(5 * EACH_GAP_MS)
     expect(save).toHaveBeenCalledTimes(3)
+  })
+  it('with the default save, n files announce n downloads', () => {
+    vi.useFakeTimers()
+    stubSave()
+    const l = listen()
+    const items = ['a', 'b', 'c'].map((n) => ({ blob: new Blob([n]), name: `${n}.jpg` }))
+    saveEach(items, () => {})
+    vi.advanceTimersByTime(5 * EACH_GAP_MS)
+    l.stop()
+    expect(l.events).toHaveLength(3)
   })
   it('cancel (new settings, new image, leaving): the rest is not downloaded', () => {
     vi.useFakeTimers()
@@ -73,5 +123,19 @@ describe('share', () => {
   it('other failures are thrown (shown as a short message)', async () => {
     await expect(shareFiles(files, { share: vi.fn(async () => Promise.reject(new DOMException('no', 'NotAllowedError'))) })).rejects.toMatchObject({ name: 'NotAllowedError' })
     await expect(shareFiles(files, {})).rejects.toThrow('Web Share is not available')
+  })
+  it('announces the download only when the files were shared', async () => {
+    const l = listen()
+    await shareFiles(files, { share: vi.fn(async () => {}) })
+    expect(l.events).toHaveLength(1)
+    l.stop()
+  })
+  it('does not announce when the user cancels or sharing fails', async () => {
+    const l = listen()
+    await shareFiles(files, { share: vi.fn(async () => Promise.reject(new DOMException('closed', 'AbortError'))) })
+    await expect(shareFiles(files, { share: vi.fn(async () => Promise.reject(new DOMException('no', 'NotAllowedError'))) })).rejects.toThrow()
+    await expect(shareFiles(files, {})).rejects.toThrow()
+    l.stop()
+    expect(l.events).toHaveLength(0)
   })
 })
