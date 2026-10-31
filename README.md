@@ -33,10 +33,15 @@ npm clones the tag, installs the package's dependencies and devDependencies, run
 | `@creator-hub/image-core/codec` | `decodeImage` (EXIF orientation applied), `encodeCanvas` (JPG/WebP quality, falls back → `UnsupportedOutputError`), `canEncode`, `fillWhite` (JPG has no transparency), `createCanvas`, `ImageDecodeError`, `EncodeError` |
 | `@creator-hub/image-core/zip` | `zipStore` (stored entries, CRC-32, UTF-8 names), `crc32`, `zipSize`, `MAX_ZIP_BYTES`, `ZipTooLargeError` |
 | `@creator-hub/image-core/pdf` (new in v0.2.1) | `writePdf` (Blob), `pdfStore` (parts), `parseJpegSize`, `mmToPt`, `pxToPt`, `estimatePdfOverhead`, `PdfError`, `MAX_PAGE_PT`, `PDF_MIME` |
-| `@creator-hub/image-core/downloads` | `saveBlob`, `saveEach` (one after another, 300 ms apart), `canShareFiles` (`navigator.canShare({ files })`), `shareFiles` (user cancel → `'cancelled'`) |
+| `@creator-hub/image-core/downloads` | `saveBlob`, `saveEach` (one after another, 300 ms apart), `canShareFiles` (`navigator.canShare({ files })`), `shareFiles` (user cancel → `'cancelled'`), `DOWNLOAD_EVENT`, `announceDownload` (new in v0.3.1) |
 | `@creator-hub/image-core/png` (new in v0.3.0; optional, a separate entry; see "PNG compress") | `compressPng`, `PNG_MAX_PIXELS`, `PngTooLargeError`, `PngCompressError`, types |
 | `@creator-hub/image-core/pages` (Node) | `checkAllowedOrigin`, `renderHeaders`, `devPageFiles`, `runPostbuild` |
 | `@creator-hub/image-core` | everything above except `pages` and `png` (the main entry never imports upng-js, pako or oxipng) |
+
+### Download event (new in v0.3.1)
+
+`saveBlob` (so `saveEach` too, once per file) and `shareFiles` (only on `'shared'`, not on cancel or error) dispatch a plain `CustomEvent('imginsta:download')` on `window`, with no detail and no data; printing is not a download and sends nothing. A tool that downloads with a plain `<a download>` calls `announceDownload()` from its `onClick` (without `preventDefault`).
+The shell listens for the event (to show its bookmark tip); tools never import shell code, they only send this event. With no listener, or without a `window` (SSR, Node), nothing happens.
 
 ### PDF writer
 

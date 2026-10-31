@@ -3,6 +3,19 @@
 
 export type Item = { blob: Blob; name: string }
 
+/** The window event that says "a file was just saved or shared". It carries no detail or data. */
+export const DOWNLOAD_EVENT = 'imginsta:download'
+
+/**
+ * Tells the page that a download finished (the shell may then show its bookmark tip). Does
+ * nothing without a `window` (SSR, Node). `saveBlob` and `shareFiles` call it; a plain
+ * `<a download>` calls it from its onClick (without preventDefault).
+ */
+export function announceDownload(): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(DOWNLOAD_EVENT))
+}
+
 /** Starts the download of one blob under `name`; its object URL is released after `keep` ms. */
 export function saveBlob(blob: Blob, name: string, doc: Document = document, keep = 2000) {
   const url = URL.createObjectURL(blob)
@@ -15,6 +28,7 @@ export function saveBlob(blob: Blob, name: string, doc: Document = document, kee
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), keep)
+  announceDownload()
 }
 
 /** The gap between the downloads of "Download all separately". */
@@ -66,6 +80,7 @@ export async function shareFiles(files: readonly File[], nav: Partial<ShareNavig
   if (!nav?.share) throw new Error('Web Share is not available')
   try {
     await nav.share({ files: [...files] })
+    announceDownload()
     return 'shared'
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
