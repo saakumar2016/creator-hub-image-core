@@ -2,7 +2,8 @@
 // the main entry never imports this, so a tool that does not use it ships none of it. Load it when it is needed:
 //   const { removeBackground, composeBackground } = await import('@creator-hub/image-core/background')
 // Neither the model nor the runtime is downloaded before `removeBackground` is called. It needs Vite (`?worker&inline`): see the README section "Remove background".
-import BackgroundWorker from './worker.ts?worker&inline'
+// (`.js`, not `.ts`: tsc keeps the specifier as written, and dist/ has worker.js)
+import BackgroundWorker from './worker.js?worker&inline'
 import { composeRgba } from './core.ts'
 import { createRemover, type WorkerLike } from './client.ts'
 import { toCanvas, toRgba } from './source.ts'

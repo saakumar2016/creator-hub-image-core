@@ -1,16 +1,17 @@
 // Turns what the caller gives (pixels, a bitmap, a canvas, an image element) into plain RGBA pixels at the photo's own size, and a cut-out back into a canvas.
-import { MAX_PIXELS } from '../limits.ts'
+import { BACKGROUND_MAX_PIXELS } from './types.ts'
 import type { Cutout, ImageInput, RgbaImage } from './types.ts'
 
 const isPixels = (image: ImageInput): image is RgbaImage => 'data' in image && 'width' in image && 'height' in image
 
-/** Plain pixels from any input. Throws a `RangeError` for an empty picture or one over `MAX_PIXELS` (50 MP). */
+/** Plain pixels from any input (read as sRGB). Throws a `RangeError` for an empty picture or one over `BACKGROUND_MAX_PIXELS` (25 MP). */
 export function toRgba(image: ImageInput): RgbaImage {
   let result: RgbaImage
   if (isPixels(image)) result = image
   else {
     const width = 'naturalWidth' in image ? image.naturalWidth : image.width
     const height = 'naturalHeight' in image ? image.naturalHeight : image.height
+    if (!(width > 0 && height > 0)) throw new RangeError('The image has no size (it is not loaded yet, or it is an SVG without a size)')
     check(width, height)
     const canvas: HTMLCanvasElement | OffscreenCanvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(width, height) : Object.assign(document.createElement('canvas'), { width, height })
     const ctx = canvas.getContext('2d', { colorSpace: 'srgb', willReadFrequently: true }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
@@ -26,7 +27,7 @@ export function toRgba(image: ImageInput): RgbaImage {
 
 function check(width: number, height: number): void {
   if (!(Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0)) throw new RangeError('The image must have a width and a height')
-  if (width * height > MAX_PIXELS) throw new RangeError(`The image has ${width * height} pixels; the limit is ${MAX_PIXELS}`)
+  if (width * height > BACKGROUND_MAX_PIXELS) throw new RangeError(`The image has ${width * height} pixels; the limit is ${BACKGROUND_MAX_PIXELS}`)
 }
 
 /** A canvas with these pixels on it. */

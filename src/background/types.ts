@@ -20,10 +20,10 @@ export type RemoveBackgroundOptions = {
   modelUrl: string
   /**
    * Absolute URL (ending in "/") of the folder with the onnxruntime-web files `ort-wasm-simd-threaded.mjs` and `.wasm`.
-   * Default: `/ort/<onnxruntime-web version>/` on the origin of `modelUrl`.
+   * Default: `/ort/<onnxruntime-web version>/` on the page's origin.
    */
   ortBase?: string
-  /** The size of the model file in bytes: the 100 % of the download bar (a server may compress, so Content-Length is not always the file's size). */
+  /** The size of the model file in bytes: the 100 % of the download bar (a server may compress, so Content-Length is not always the file's size). Without it `total` is Content-Length, or 0 when that is not known. */
   modelBytes?: number
   /** Aborting rejects with an `AbortError` and stops the work (the worker is ended). */
   signal?: AbortSignal
@@ -51,7 +51,11 @@ export const abortError = (): DOMException => new DOMException('The background r
 /** The onnxruntime-web version the package was tested with: the default folder of its files is `/ort/<this>/`. */
 export const ORT_VERSION = '1.30.0'
 
-/** Where the runtime files are, by default: next to the model's origin. */
-export function defaultOrtBase(modelUrl: string): string {
-  return new URL(`/ort/${ORT_VERSION}/`, modelUrl).href
+/** More than this many pixels is a `RangeError` (a photo this big needs about 25 bytes a pixel of memory while it works: 25 MP is about 600 MB). */
+export const BACKGROUND_MAX_PIXELS = 25_000_000
+
+/** Where the runtime files are, by default: `/ort/<version>/` on the origin of the PAGE (the tool serves them itself, like the model). Without a page origin (no `location`), on the model's origin. */
+export function defaultOrtBase(modelUrl: string, pageOrigin: string | undefined = globalThis.location?.origin): string {
+  const origin = pageOrigin && pageOrigin !== 'null' ? pageOrigin : new URL(modelUrl).origin
+  return new URL(`/ort/${ORT_VERSION}/`, origin).href
 }

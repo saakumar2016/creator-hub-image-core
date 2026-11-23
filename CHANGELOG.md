@@ -8,6 +8,7 @@
   - `onProgress` reports `{ stage: 'download', loaded, total }` on the first call and then `{ stage: 'processing' }`. `signal` cancels (`AbortError`). A wrong model URL gives a `BackgroundModelError` with the URL and the status.
   - `composeBackground(cutout, 'transparent' | '#rrggbb')` returns a new canvas.
   - `onnxruntime-web` 1.30.0 is an optional peer dependency (exact version); the main entry and the other entries import none of this.
+  - At most 25 MP per photo (`BACKGROUND_MAX_PIXELS`). The default folder of the onnxruntime-web files is `/ort/1.30.0/` on the page's origin.
 - Nothing else changes.
 
 ## 0.3.1

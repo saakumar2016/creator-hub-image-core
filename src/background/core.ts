@@ -165,11 +165,13 @@ export function upscaleMask(mask: Float32Array, fromWidth: number, fromHeight: n
 /** The feather's radius in pixels for a photo: about 1/700 of its longer side, at least 1 (3 px on 1500 × 2000). */
 export const featherRadius = (width: number, height: number): number => Math.max(1, Math.round(Math.max(width, height) / 700))
 
-/** A soft edge: a box blur of the mask, horizontal then vertical (running sums, so it costs the same at any radius). Inside the cut-out (all 1) and far outside (all 0) nothing changes. */
+/**
+ * A soft edge: a box blur of the mask, horizontal then vertical (running sums, so it costs the same at any radius). Inside the cut-out (all 1) and far outside (all 0)
+ * nothing changes. The blurred mask is written back into `mask` (one scratch array, not two: a big photo needs the memory) and returned.
+ */
 export function feather(mask: Float32Array, width: number, height: number, radius: number): Float32Array {
   if (radius < 1) return mask
   const tmp = new Float32Array(mask.length)
-  const out = new Float32Array(mask.length)
   const span = 2 * radius + 1
   for (let y = 0; y < height; y++) {
     const row = y * width
@@ -184,11 +186,11 @@ export function feather(mask: Float32Array, width: number, height: number, radiu
     let sum = 0
     for (let k = -radius; k <= radius; k++) sum += tmp[Math.min(height - 1, Math.max(0, k)) * width + x]
     for (let y = 0; y < height; y++) {
-      out[y * width + x] = sum / span
+      mask[y * width + x] = sum / span
       sum += tmp[Math.min(height - 1, y + radius + 1) * width + x] - tmp[Math.max(0, y - radius) * width + x]
     }
   }
-  return out
+  return mask
 }
 
 /** The photo's pixels with the mask as alpha (0 = background, 255 = kept). A photo that already had see-through parts keeps them (the two alphas multiply). */

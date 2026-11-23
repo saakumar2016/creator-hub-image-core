@@ -64,11 +64,16 @@ export async function createSession(ort: OrtLike, bytes: Uint8Array, ortBase: st
     return await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' })
   } catch (error) {
     const text = String(error instanceof Error ? error.message : error)
-    // a file that is not a model (an HTML 404 page, a changed file) fails here with a protobuf error; a missing wasm file fails with a fetch or import error
-    if (/protobuf|parse|invalid|onnx|model/i.test(text)) throw new BackgroundModelError('The model file is not a valid ONNX model', { cause: error })
+    // onnxruntime says so when the FILE is not a model (an HTML page, a cut-off download): "Failed to load model because protobuf parsing failed". Anything else (the wasm
+    // could not be fetched or compiled, the loader module is missing) is the runtime's problem, and the message says where its files must be.
+    if (/protobuf|Failed to load model|ModelProto|INVALID_PROTOBUF/i.test(text)) throw new BackgroundModelError('The model file is not a valid ONNX model', { cause: error })
     throw new BackgroundError(`The onnxruntime-web files could not be started (${text}). They must be served from ${ortBase}`, { cause: error })
   }
 }
+
+/** A typed array that cannot be allocated is a `RangeError`: say what it means. */
+export const memoryError = (error: unknown): BackgroundError | null =>
+  error instanceof RangeError && /allocation|Invalid typed array length|Array buffer allocation/i.test(error.message) ? new BackgroundError('There is not enough memory for a photo this big. Try a smaller one.', { cause: error }) : null
 
 /** One photo through the model: its cut-out at its own size. */
 export async function cutOut(ort: OrtLike, session: SessionLike, image: RgbaImage): Promise<Cutout> {

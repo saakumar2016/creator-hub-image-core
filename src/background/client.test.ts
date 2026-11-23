@@ -50,7 +50,7 @@ describe('the worker path', () => {
     expect([cutout.width, cutout.height]).toEqual([300, 200])
     expect(alphaAt(cutout, 150, 100)).toBe(255)
     expect(alphaAt(cutout, 2, 2)).toBe(0)
-    expect(workers.made[0].requests[0]).toMatchObject({ type: 'run', modelUrl: MODEL, modelBytes: 4000, ortBase: `https://tools.example/ort/${ORT_VERSION}/`, width: 300, height: 200 })
+    expect(workers.made[0].requests[0]).toMatchObject({ type: 'run', modelUrl: MODEL, modelBytes: 4000, ortBase: `${location.origin}/ort/${ORT_VERSION}/`, width: 300, height: 200 })
   })
   it('does not detach or change the caller\'s pixels (a copy goes to the worker)', async () => {
     const workers = fakeWorkers()
@@ -74,7 +74,10 @@ describe('the worker path', () => {
     const remove = createRemover({ spawn: workers.spawn, loadOrt: async () => fakeOrt().ort })
     await remove(photo, { modelUrl: MODEL, ortBase: 'https://cdn.example/runtime' })
     expect(workers.made[0].requests[0].ortBase).toBe('https://cdn.example/runtime/')
-    expect(defaultOrtBase('https://a.example/x/y.onnx')).toBe(`https://a.example/ort/${ORT_VERSION}/`)
+    // the default folder is on the page's origin; only without a page origin does it fall back to the model's origin
+    expect(defaultOrtBase('https://cdn.example/x/y.onnx', 'https://tool.example')).toBe(`https://tool.example/ort/${ORT_VERSION}/`)
+    expect(defaultOrtBase('https://cdn.example/x/y.onnx', 'null')).toBe(`https://cdn.example/ort/${ORT_VERSION}/`)
+    expect(defaultOrtBase('https://cdn.example/x/y.onnx', undefined)).toBe(`${location.origin}/ort/${ORT_VERSION}/`) // jsdom has a location
   })
   it('Cancel: aborting while it works rejects with an AbortError and ends the worker (nobody else waits)', async () => {
     const workers = fakeWorkers(() => 'silent')
@@ -159,7 +162,7 @@ describe('the main-thread fallback (no worker, or a worker that fails)', () => {
       expect(cutout.data.slice((100 * 300 + 150) * 4, (100 * 300 + 150) * 4 + 4)).toEqual(new Uint8ClampedArray([...RED, 255]))
       expect(alphaAt(cutout, 1, 1)).toBe(0)
     }
-    expect(ort.env.wasm.wasmPaths).toBe(`https://tools.example/ort/${ORT_VERSION}/`)
+    expect(ort.env.wasm.wasmPaths).toBe(`${location.origin}/ort/${ORT_VERSION}/`) // the PAGE's origin: the tool serves the runtime itself
     expect(ort.env.wasm.numThreads).toBe(1)
   })
   it('a worker that fails to run hands the photo to the main thread', async () => {
@@ -203,7 +206,7 @@ describe('the main-thread fallback (no worker, or a worker that fails)', () => {
     const error = await remove(photo, { modelUrl: MODEL }).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(BackgroundError)
     expect(error).not.toBeInstanceOf(BackgroundModelError)
-    expect((error as Error).message).toContain(`https://tools.example/ort/${ORT_VERSION}/`)
+    expect((error as Error).message).toContain(`${location.origin}/ort/${ORT_VERSION}/`)
   })
   it('a failed load is tried again on the next call (it is not cached)', async () => {
     let ok = false
@@ -231,5 +234,91 @@ describe('the main-thread fallback (no worker, or a worker that fails)', () => {
     const remove = createRemover({ spawn: noWorker, loadOrt: async () => ort })
     const waiting = remove(photo, { modelUrl: MODEL, signal: controller.signal, onProgress: (p) => { if (p.stage === 'processing') controller.abort() } })
     await expect(waiting).rejects.toMatchObject({ name: 'AbortError' })
+  })
+})
+
+describe('more cases (from the review)', () => {
+  const modelBytes = new Uint8Array(4000).fill(7)
+  const noWorker = () => { throw new Error('Workers are not available') }
+  const stubFetch = (handler: (url: string, signal?: AbortSignal) => Response | Promise<Response>) => {
+    const fetchMock = vi.fn(async (url: string, init?: { signal?: AbortSignal }) => handler(url, init?.signal))
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('a worker that cannot take the message hands EVERY waiting call to the main thread (none hangs)', async () => {
+    stubFetch(() => new Response(modelBytes))
+    const { ort } = fakeOrt(300, 200)
+    let fail = false
+    const made: { onmessage: WorkerLike['onmessage']; onerror: WorkerLike['onerror']; posted: number; terminated: boolean }[] = []
+    const spawn = (): WorkerLike => {
+      const w = { onmessage: null as WorkerLike['onmessage'], onerror: null as WorkerLike['onerror'], posted: 0, terminated: false, postMessage() { w.posted++; if (fail) throw new Error('DataCloneError') }, terminate() { w.terminated = true } }
+      made.push(w)
+      return w
+    }
+    const remove = createRemover({ spawn, loadOrt: async () => ort })
+    const first = remove(photo, { modelUrl: MODEL }) // goes to the worker, which never answers
+    fail = true
+    const second = remove(photo, { modelUrl: MODEL }) // its postMessage throws
+    const [a, b] = await Promise.all([first, second])
+    expect(alphaAt(a, 150, 100)).toBe(255)
+    expect(alphaAt(b, 150, 100)).toBe(255)
+    expect(made[0].terminated).toBe(true)
+  })
+  it('the main-thread download belongs to everyone who waits: one Cancel does not reject the other call, and both hear the progress', async () => {
+    let release: () => void = () => {}
+    stubFetch(() => new Promise<Response>((resolve) => { release = () => resolve(new Response(modelBytes, { headers: { 'Content-Length': '4000' } })) }))
+    const { ort } = fakeOrt(300, 200)
+    const remove = createRemover({ spawn: noWorker, loadOrt: async () => ort })
+    const a = new AbortController()
+    const seenB: BackgroundProgress[] = []
+    const first = remove(photo, { modelUrl: MODEL, signal: a.signal })
+    const second = remove(photo, { modelUrl: MODEL, onProgress: (p) => seenB.push(p) })
+    await new Promise((r) => setTimeout(r, 5))
+    a.abort()
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' })
+    release()
+    const cutout = await second
+    expect(alphaAt(cutout, 150, 100)).toBe(255)
+    expect(seenB.some((p) => p.stage === 'download')).toBe(true)
+  })
+  it('when the only caller cancels the download, the download is stopped and the next call starts it again', async () => {
+    let signals: (AbortSignal | undefined)[] = []
+    const fetchMock = stubFetch((_url, signal) => { signals.push(signal); return new Promise<Response>((_r, reject) => signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))) })
+    const remove = createRemover({ spawn: noWorker, loadOrt: async () => fakeOrt(300, 200).ort })
+    const a = new AbortController()
+    const waiting = remove(photo, { modelUrl: MODEL, signal: a.signal })
+    await new Promise((r) => setTimeout(r, 5))
+    a.abort()
+    await expect(waiting).rejects.toMatchObject({ name: 'AbortError' })
+    expect(signals[0]?.aborted).toBe(true)
+    signals = []
+    fetchMock.mockImplementation(async () => new Response(modelBytes))
+    const cutout = await remove(photo, { modelUrl: MODEL })
+    expect(alphaAt(cutout, 150, 100)).toBe(255)
+  })
+  it('a wasm failure whose text contains "onnx" or "model" is a BackgroundError (the runtime), not a model error', async () => {
+    stubFetch(() => new Response(modelBytes))
+    for (const text of ['CompileError: WebAssembly.instantiate(): invalid magic number at /models/onnxruntime/ort.wasm', 'failed to fetch dynamically imported module: /onnx/model-runtime.mjs']) {
+      const { ort } = fakeOrt()
+      ort.InferenceSession.create = async () => { throw new Error(text) }
+      const remove = createRemover({ spawn: noWorker, loadOrt: async () => ort })
+      const error = await remove(photo, { modelUrl: MODEL }).catch((e: unknown) => e)
+      expect(error, text).toBeInstanceOf(BackgroundError)
+      expect(error, text).not.toBeInstanceOf(BackgroundModelError)
+    }
+  })
+  it('a photo too big for the memory is a clear BackgroundError (not a bare RangeError)', async () => {
+    stubFetch(() => new Response(modelBytes))
+    const { ort } = fakeOrt(300, 200)
+    ort.Tensor = class { constructor() { throw new RangeError('Array buffer allocation failed') } } as unknown as typeof ort.Tensor
+    const remove = createRemover({ spawn: noWorker, loadOrt: async () => ort })
+    const error = await remove(photo, { modelUrl: MODEL }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(BackgroundError)
+    expect((error as Error).message).toMatch(/not enough memory/)
+  })
+  it('a bad ortBase is a RangeError', async () => {
+    const remove = createRemover({ spawn: noWorker, loadOrt: async () => fakeOrt().ort })
+    await expect(remove(photo, { modelUrl: MODEL, ortBase: 'ort/1.30.0' })).rejects.toBeInstanceOf(RangeError)
   })
 })
