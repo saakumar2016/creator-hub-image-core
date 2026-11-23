@@ -324,3 +324,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+
+## `@creator-hub/image-core/background` (remove background)
+
+This entry runs a model with onnxruntime-web; it bundles the small JavaScript part of the runtime into its worker. The runtime's wasm files and the model are **not** part of this package: the page that uses it serves them.
+
+| Part | Version | Licence | Used for |
+|---|---|---|---|
+| [onnxruntime-web](https://github.com/microsoft/onnxruntime) (optional peer dependency) | 1.30.0 | MIT, Copyright (c) Microsoft Corporation | runs the network (CPU WebAssembly) |
+| [U²-Net](https://github.com/xuebinqin/U-2-Net) (the model the entry is written for; not included) | | Apache-2.0 | finds the subject of the photo |
+
+U²-Net: Xuebin Qin, Zichen Zhang, Chenyang Huang, Masood Dehghan, Osmar R. Zaiane and Martin Jagersand, "U²-Net: Going Deeper with Nested U-Structure for Salient Object Detection", Pattern Recognition 106 (2020). The small variant ("u2netp") is the one this entry's input and output sizes (320 × 320) are made for. The ONNX file is the one in the rembg releases (<https://github.com/danielgatis/rembg>, `u2netp.onnx`); whoever serves the file must also serve the Apache-2.0 licence text with it.
