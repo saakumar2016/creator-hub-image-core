@@ -35,8 +35,9 @@ npm clones the tag, installs the package's dependencies and devDependencies, run
 | `@creator-hub/image-core/pdf` (new in v0.2.1) | `writePdf` (Blob), `pdfStore` (parts), `parseJpegSize`, `mmToPt`, `pxToPt`, `estimatePdfOverhead`, `PdfError`, `MAX_PAGE_PT`, `PDF_MIME` |
 | `@creator-hub/image-core/downloads` | `saveBlob`, `saveEach` (one after another, 300 ms apart), `canShareFiles` (`navigator.canShare({ files })`), `shareFiles` (user cancel → `'cancelled'`), `DOWNLOAD_EVENT`, `announceDownload` (new in v0.3.1) |
 | `@creator-hub/image-core/png` (new in v0.3.0; optional, a separate entry; see "PNG compress") | `compressPng`, `PNG_MAX_PIXELS`, `PngTooLargeError`, `PngCompressError`, types |
+| `@creator-hub/image-core/background` (new in v0.4.0; optional, a separate entry; see "Remove background") | `removeBackground`, `composeBackground`, `composeRgba`, `BackgroundError`, `BackgroundModelError`, types |
 | `@creator-hub/image-core/pages` (Node) | `checkAllowedOrigin`, `renderHeaders`, `devPageFiles`, `runPostbuild` |
-| `@creator-hub/image-core` | everything above except `pages` and `png` (the main entry never imports upng-js, pako or oxipng) |
+| `@creator-hub/image-core` | everything above except `pages`, `png` and `background` (the main entry never imports upng-js, pako, oxipng or onnxruntime-web) |
 
 ### Download event (new in v0.3.1)
 
@@ -119,6 +120,34 @@ optimizeDeps: {
 
 Third-party code in this entry (upng-js, pako, @jsquash/oxipng, oxipng): `THIRD_PARTY_NOTICES.md`.
 
+### Remove background (new in v0.4.0)
+
+Cuts the subject out of a photo in the browser. A separate entry, so a tool that does not use it ships **none** of it. Load it when it is called:
+
+```ts
+const { removeBackground, composeBackground } = await import('@creator-hub/image-core/background')
+const cutout = await removeBackground(imageBitmap, { modelUrl, signal, onProgress })
+// cutout: { data (RGBA, Uint8ClampedArray), width, height }: the photo at its own size, the background has alpha 0
+const canvas = composeBackground(cutout, '#ffffff') // or 'transparent'; a new canvas
+```
+
+| Option | Default | |
+|---|---|---|
+| `modelUrl` | required | Absolute URL of the U²-Net small ("u2netp") ONNX file. **The model is not part of this package**: the page serves it. It is fetched only when `removeBackground` is called, and once per page. |
+| `ortBase` | `/ort/1.30.0/` on the origin of `modelUrl` | Absolute URL of the folder with `ort-wasm-simd-threaded.mjs` and `.wasm` of onnxruntime-web (copy them from `node_modules/onnxruntime-web/dist/`). Same-origin with the page is the simplest. |
+| `modelBytes` | Content-Length | The size to show 100 % at (a server may compress the file). |
+| `signal` | | Aborting rejects with an `AbortError` and ends the worker. |
+| `onProgress` | | `{ stage: 'download', loaded, total }` (the first call in a page only), then `{ stage: 'processing' }`. |
+
+- Input: `ImageData` or `{ data, width, height }` (RGBA), `ImageBitmap`, canvas, `OffscreenCanvas` or an image element. More than 50 MP (`MAX_PIXELS`) throws a `RangeError`.
+- What it does: the photo is squeezed to the model's 320 × 320 (area average), the model's mask is stretched back to the photo's size (bilinear) and a light feather (box blur of about 1/700 of the longer side) softens the edge. The colours are the photo's own; only alpha changes.
+- `composeBackground(cutout, 'transparent' | '#rgb' | '#rrggbb')`: the transparent one is the cut-out as it is; a colour fills the background (the soft edge blends into it) and is fully opaque. `composeRgba` does the same on plain pixels, without a canvas.
+- Errors: `BackgroundModelError` (a wrong URL, a failed request, a file that is not an ONNX model; the message names the URL and the status), `BackgroundError` (the runtime files could not be started; the message says where they must be), `AbortError`, `RangeError` (bad input or options).
+- Runs in a Web Worker (bundled into the entry with Vite's `?worker&inline`, a Blob URL of the page's origin, so it also works inside a Module Federation host); where workers are unavailable, or the worker fails to start, on the main thread (slower, the page may stutter). The session is kept, so the second photo does not download or load the model again.
+- Needs `onnxruntime-web` **1.30.0** (an exact, optional peer dependency: install it in the tool that uses this entry) and a Vite config with `worker: { format: 'es' }` (the runtime imports its loader module from inside the worker).
+- Tests of this package use a stand-in model and photos drawn in code. To run the real model on a made-up photo set `U2NETP_PATH` to the file: `U2NETP_PATH=/path/u2netp.onnx npx vitest run src/background/model.integration.test.ts`.
+- U²-Net: Xuebin Qin et al., Apache-2.0 (<https://github.com/xuebinqin/U-2-Net>), see `THIRD_PARTY_NOTICES.md`.
+
 ## Development
 
 ```bash
@@ -129,7 +158,7 @@ npm run typecheck
 npm run build
 ```
 
-Versions are released as tags (`v0.1.0`, `v0.2.1`, `v0.3.0`, …); tools update the tag in their `package.json`.
+Versions are released as tags (`v0.1.0`, `v0.2.1`, `v0.3.0`, `v0.4.0`, …); see `CHANGELOG.md`; tools update the tag in their `package.json`.
 `v0.2.0` points at the same commit as `v0.1.0` and has no PDF writer: use `v0.2.1` or later.
 
 Used by Creator Hub tools. MIT license.
